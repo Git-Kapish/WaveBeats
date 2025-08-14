@@ -1,0 +1,12 @@
+{
+  "camera_index": 0,
+  "frame_width": 1080,
+  "frame_height": 720,
+  "min_detection_confidence": 0.6,
+  "min_tracking_confidence": 0.6,
+  "cooldown_ms": 1000,
+  "history_length": 8,
+  "swipe_norm_threshold": 0.12,
+  "volume_close_thresh": 0.05,
+  "volume_far_thresh": 0.12
+}
