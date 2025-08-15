@@ -1,6 +1,5 @@
-# WaveBeats 🎶
-
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+# WaveBeats 🎶  
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
 Smart, webcam-driven media control using hand gestures — a small prototype that maps simple gestures to media actions for hands-free playback control.
 
@@ -117,6 +116,4 @@ Repository: https://github.com/Git-Kapish/WaveBeats
 
 ## License
  
-This project is licensed under the MIT License — see the included `LICENSE` file for the full text and permissions.
-
-SPDX-License-Identifier: MIT
+This project is licensed under the MIT License (SPDX: MIT) — see the included `LICENSE` file for the full text and permissions.
