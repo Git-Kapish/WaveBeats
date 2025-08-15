@@ -1,106 +1,146 @@
 """
 Gesture detection logic based on MediaPipe hand landmarks.
 
-Functions:
-- detect_gesture(hand_landmarks, hand_history, frame_shape, config)
-    Returns: one of ("play_pause","next","previous","volume_up","volume_down","none")
+Returns one of:
+  "play", "pause", "next", "previous", "volume_up", "volume_down", "none"
 """
 
-from typing import Optional
 import math
 
-# Landmark indices for finger tips and pip joints
-TIPS = [4, 8, 12, 16, 20]   # thumb, index, middle, ring, pinky
-PIPS = [3, 6, 10, 14, 18]   # prox. interphalangeal / lower joint
+# MediaPipe landmark indices
+# Thumb: 1(CMC), 2(MCP), 3(IP), 4(TIP)
+# Index/Middle/Ring/Pinky: MCP -> PIP -> DIP -> TIP
+TIPS = [4, 8, 12, 16, 20]          # thumb, index, middle, ring, pinky tips
+PIPS = [3, 6, 10, 14, 18]          # corresponding lower joints
 
-def _finger_is_up(landmarks, tip_idx, pip_idx, frame_shape):
-    """
-    Determine if finger is up: compare y of tip and pip for fingers (not thumb).
-    For the thumb we compare x due to orientation in mirrored frame.
-    """
-    h, w = frame_shape[0], frame_shape[1]
+# Small tolerance to reduce jitter
+MARGIN_Y = 0.02    # for up/down comparisons
+MARGIN_X = 0.02    # not used much here but handy if needed
+
+
+def _finger_is_up(landmarks, tip_idx, pip_idx) -> bool:
+    #For non-thumb fingers: finger is 'up' if tip is ABOVE pip (smaller y).
     tip = landmarks.landmark[tip_idx]
     pip = landmarks.landmark[pip_idx]
+    return (tip.y + MARGIN_Y) < pip.y
 
-    # For index..pinky higher (smaller y) -> finger up
-    if tip_idx != 4:  # not thumb
-        return tip.y < pip.y
-    else:
-        # For thumb use x comparison (thumb is sideways). Consider handedness is mirrored.
-        return tip.x < pip.x  # in mirrored frame this works when thumb is open to left
 
-def _calc_distance(a, b):
-    return math.hypot(a.x - b.x, a.y - b.y)
+def _thumb_extended_up(landmarks) -> bool:
+    
+    # Thumb 'up' if:
+    #   1) Thumb is extended (tip far enough from IP),
+    #   2) Thumb tip is ABOVE thumb IP (smaller y).
+    
+    tip = landmarks.landmark[4]
+    ip  = landmarks.landmark[3]
+    # distance threshold for "extended"
+    dist = math.hypot(tip.x - ip.x, tip.y - ip.y)
+    extended = dist > 0.05
+    oriented_up = (tip.y + MARGIN_Y) < ip.y
+    return extended and oriented_up
 
-def _palm_center_x(landmarks):
-    # approximate palm center using landmark 9
-    return landmarks.landmark[9].x
+
+def _thumb_extended_down(landmarks) -> bool:
+    #Thumb 'down' if extended and tip is BELOW IP (larger y).
+    tip = landmarks.landmark[4]
+    ip  = landmarks.landmark[3]
+    dist = math.hypot(tip.x - ip.x, tip.y - ip.y)
+    extended = dist > 0.05
+    oriented_down = (tip.y - MARGIN_Y) > ip.y
+    return extended and oriented_down
+
+
+def _all_non_thumb_up(landmarks) -> bool:
+    # rest of the fingers are 'up' if tips are ABOVE their PIPs (smaller y).
+    return all(_finger_is_up(landmarks, TIPS[i], PIPS[i]) for i in range(1, 5))
+
+
+def _all_non_thumb_down(landmarks) -> bool:
+    # rest of the fingers are 'down' if tips are BELOW their PIPs (larger y).
+    return not any(_finger_is_up(landmarks, TIPS[i], PIPS[i]) for i in range(1, 5))
+
 
 def detect_gesture(hand_landmarks, hand_history, frame_shape, config) -> str:
-    """
-    Detects a limited set of gestures:
-    - Fist (all fingers down) -> play_pause
-    - Open palm (all fingers up) -> play_pause (or none)
-    - Swipe right (fast increase in palm x) -> next
-    - Swipe left (fast decrease) -> previous
-    - Volume control: index + thumb distance (if both extended) -> volume_up/volume_down (thresholded)
-    """
+    # Anti-clockwise rotation detection for volume down
+    def get_hand_angle(landmarks):
+        wrist = landmarks.landmark[0]
+        index_tip = landmarks.landmark[8]
+        dx = index_tip.x - wrist.x
+        dy = index_tip.y - wrist.y
+        angle = math.degrees(math.atan2(dy, dx))
+        return angle
 
-    # 1) Finger up/down
-    fingers_up = []
-    for tip, pip in zip(TIPS, PIPS):
-        fingers_up.append(_finger_is_up(hand_landmarks, tip, pip, frame_shape))
+    # Use correct attribute name for maxlen (HandHistory likely uses 'max_length')
+    maxlen = getattr(hand_history, 'maxlen', getattr(hand_history, 'max_length', 8))
+    if hasattr(hand_history, 'angle_history'):
+        hand_history.angle_history.append(get_hand_angle(hand_landmarks))
+        if len(hand_history.angle_history) > maxlen:
+            hand_history.angle_history.popleft()
+    else:
+        from collections import deque
+        hand_history.angle_history = deque([get_hand_angle(hand_landmarks)], maxlen=maxlen)
 
-    # Interpret basic gestures
-    all_down = not any(fingers_up)
-    all_up = all(fingers_up)
+    angles = list(getattr(hand_history, 'angle_history', []))
+    if len(angles) >= 3:
+        d_angle = angles[-1] - angles[0]
+        rot_thresh = float(config.get("rotation_angle_threshold", -20))  # negative for anti-clockwise
+        if d_angle < rot_thresh:
+            return "volume_down"
+    
+    # Mapping:
+    #   Thumbs up   -> volume_up
+    #   Thumbs down -> volume_down
+    #   Palm        -> play
+    #   Fist        -> pause
+    #   Swipe left  -> previous
+    #   Swipe right -> next
+    
 
-    # Calculate swipe from hand_history (list of recent cx values possibly with None)
-    # Compute delta between newest valid and oldest valid snapshot
+    # Swipe detection (increases sensitivity)
     xs = [x for x in hand_history.history if x is not None]
-    swipe = None
     if len(xs) >= 3:
         dx = xs[-1] - xs[0]
-        # Normalize by frame width
         frame_w = frame_shape[1]
-        norm_dx = dx / frame_w
-        swipe_threshold = config.get("swipe_norm_threshold", 0.12)
+        norm_dx = dx / max(1, frame_w) # normalize
+        swipe_threshold = float(config.get("swipe_norm_threshold", 0.02))
         if norm_dx > swipe_threshold:
-            swipe = "right"
+            return "next"
         elif norm_dx < -swipe_threshold:
-            swipe = "left"
+            return "previous"
 
-    # Volume control: if thumb and index both up, use their distance to interpret volume gestures
-    thumb = hand_landmarks.landmark[4]
-    index_tip = hand_landmarks.landmark[8]
-    thumb_index_dist = _calc_distance(thumb, index_tip)
-
-    # heuristic thresholds
-    vol_close_thresh = config.get("volume_close_thresh", 0.05)
-    vol_far_thresh = config.get("volume_far_thresh", 0.12)
-
-    # Decide gestures with priority:
-    # 1. swipe -> next/previous
-    if swipe == "right":
-        return "next"
-    if swipe == "left":
-        return "previous"
-
-    # 2. fist -> play/pause
-    if all_down:
-        return "play_pause"
-
-    # 3. volume by thumb-index distance (if both up)
-    if fingers_up[0] and fingers_up[1]:  # thumb and index up
-        if thumb_index_dist < vol_close_thresh:
-            # finger pinched -> volume down (or mute)
+    # Volume down: anti-clockwise hand rotation (detect by palm center y decreasing over time)
+    palm_ys = [None if x is None else hand_landmarks.landmark[9].y for x in hand_history.history]
+    palm_ys = [y for y in palm_ys if y is not None]
+    if len(palm_ys) >= 3:
+        dy = palm_ys[-1] - palm_ys[0]
+        rot_thresh = float(config.get("rotation_y_threshold", 0.07))
+        if dy < -rot_thresh:
             return "volume_down"
-        elif thumb_index_dist > vol_far_thresh:
-            return "volume_up"
 
-    # 4. all open palm can be play/pause toggle as well (optional)
-    if all_up:
-        # return "play_pause"
-        return "none"
+    # Static pose detection
+    non_thumb_up = _all_non_thumb_up(hand_landmarks)
+    non_thumb_down = _all_non_thumb_down(hand_landmarks)
+
+    thumb_up_pose = _thumb_extended_up(hand_landmarks)
+    thumb_down_pose = _thumb_extended_down(hand_landmarks)
+
+    # Palm: all fingers up
+    if thumb_up_pose and non_thumb_up:
+        return "play"
+
+    # Fist: all non-thumb fingers down, thumb folded across or resting on top
+    thumb_tip = hand_landmarks.landmark[4]
+    thumb_ip = hand_landmarks.landmark[3]
+    thumb_mcp = hand_landmarks.landmark[2]
+    thumb_folded = (abs(thumb_tip.x - thumb_mcp.x) < 0.07) and (abs(thumb_tip.y - thumb_mcp.y) < 0.07)
+    if non_thumb_down and thumb_folded:
+        return "pause"
+
+    # Thumbs up/down with other fingers closed
+    if thumb_up_pose and non_thumb_down:
+        return "volume_up"
+    # More tolerant thumbs down: thumb extended down, other fingers down
+    if thumb_down_pose and non_thumb_down:
+        return "volume_down"
 
     return "none"
