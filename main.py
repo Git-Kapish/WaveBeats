@@ -24,7 +24,7 @@ with open("config.json", "r") as f:
     CONFIG = json.load(f)
 
 CAM_INDEX = CONFIG.get("camera_index", 0)
-COOLDOWN_MS = CONFIG.get("cooldown_ms", 1000)
+COOLDOWN_MS = CONFIG.get("cooldown_ms", 500)
 MAX_HISTORY = CONFIG.get("history_length", 8)
 
 mp_hands = mp.solutions.hands
