@@ -6,6 +6,7 @@ Returns one of:
 """
 
 import math
+import os
 
 # MediaPipe landmark indices
 # Thumb: 1(CMC), 2(MCP), 3(IP), 4(TIP)
@@ -86,6 +87,14 @@ def detect_gesture(hand_landmarks, hand_history, frame_shape, config) -> str:
         rot_thresh = float(config.get("rotation_angle_threshold", -20))  # negative for anti-clockwise
         if d_angle < rot_thresh:
             return "volume_down"
+
+    # Pinch gesture: index tip and thumb tip close together -> quit
+    thumb_tip = hand_landmarks.landmark[4]
+    index_tip = hand_landmarks.landmark[8]
+    pinch_dist = math.hypot(thumb_tip.x - index_tip.x, thumb_tip.y - index_tip.y)
+    pinch_thresh = float(config.get("pinch_threshold", 0.03))
+    if pinch_dist < pinch_thresh:
+        return "quit"
     
     # Mapping:
     #   Thumbs up   -> volume_up

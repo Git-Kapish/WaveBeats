@@ -24,7 +24,7 @@ with open("config.json", "r") as f:
     CONFIG = json.load(f)
 
 CAM_INDEX = CONFIG.get("camera_index", 0)
-COOLDOWN_MS = CONFIG.get("cooldown_ms", 500)
+COOLDOWN_MS = CONFIG.get("cooldown_ms", 00)
 MAX_HISTORY = CONFIG.get("history_length", 8)
 
 mp_hands = mp.solutions.hands
@@ -63,6 +63,10 @@ with mp_hands.Hands(
                 hand_history.append(cx)
 
                 gesture_name = detect_gesture(hand_landmarks, hand_history, frame.shape, CONFIG)
+                # Quit immediately on pinch gesture
+                if gesture_name == "quit":
+                    print("Pinch detected — quitting")
+                    break
                 # Perform action if not in cooldown
                 if gesture_name != "none" and cooldown.is_ready():
                     performed = perform_action(gesture_name)
