@@ -1,6 +1,5 @@
-# WaveBeats 🎶
-
-[![License: CC BY-ND 4.0](https://img.shields.io/badge/License-CC%20BY--ND%204.0-lightgrey.svg)](LICENSE)
+# WaveBeats 🎶  
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
 
 Smart, webcam-driven media control using hand gestures — a small prototype that maps simple gestures to media actions for hands-free playback control.
 
@@ -102,14 +101,7 @@ Notes:
 
 ## Contributing
 
-Because this project is released under the Creative Commons
-Attribution-NoDerivatives 4.0 International (CC BY-ND 4.0) license,
-distribution of modified or derivative versions is prohibited by the
-license. If you have an improvement or feature idea, please open an
-issue to discuss it first. The maintainer may accept contributions
-under separate terms or incorporate suggested changes directly.
-
-Ideas (after discussing via issues):
+Small, focused PRs welcome. Ideas:
 - Add macOS handlers in `actions.py` (AppleScript for Music/Spotify)
 - Add new gestures in `gestures.py` or unit tests for `utils.py`
 
@@ -123,9 +115,5 @@ Repository: https://github.com/Git-Kapish/WaveBeats
 ---
 
 ## License
-
-This project is licensed under the Creative Commons Attribution-NoDerivatives
-4.0 International (CC BY-ND 4.0). See the included `LICENSE` file for the
-full legal text and permissions.
-
-SPDX-License-Identifier: CC-BY-ND-4.0
+ 
+This project is licensed under the MIT License (SPDX: MIT) — see the included `LICENSE` file for the full text and permissions.
